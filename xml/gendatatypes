@@ -1,0 +1,4 @@
+read -p "Are you sure you want do this? You'll have to rewrite the struct splitout" a
+echo "package trainsim" > datatypes.go
+zek -max-examples 10000000 < *v8.xml >> datatypes.go
+zek -max-examples 5 < *_ref_v3.xml >> datatypes.go

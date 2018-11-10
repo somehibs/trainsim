@@ -1,3 +1,8 @@
+# no config files
+conf/*.json
+# no datafiles
+*.xml
+*.xml.gz
 # ---> Go
 # Binaries for programs and plugins
 *.exe
