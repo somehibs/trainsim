@@ -2,11 +2,48 @@ package darwin
 
 import "encoding/xml"
 
+var Activities = map[string]string{
+	"A":  "Stops or shunts for other trains to pass",
+	"AE": "(De)couple assisting locomotive",
+	"AX": "Shows as X on arrival", // I don't know what this means either
+	"BL": "Stops for 'banking locomotive",
+	"C":  "Stops to change trainmen",
+	"D":  "Stops to set down passengers",
+	"-D": "Stops to detach vehicles",
+	"E":  "Stops for examination",
+	"G":  "National Rail Timetable data to add",                  // no clue
+	"H":  "Notional activity to prevent WTT timing column merge", // ??
+	"HH": "As H where a third colum is involved",                 // ...k
+	"K":  "Passenger count point",
+	"KC": "Ticket collection and examination point",
+	"KE": "Ticket examination point",
+	"KF", "Ticket examination first class",
+	"KS": "Selective ticket examination",
+	"L":  "Locomotive change",
+	"N":  "Stop not advertised", // unexpected stop
+	"OP": "Operational reasons (undefined)",
+	"OR": "Locomotive on rear",
+	"PR": "Propelling between points",
+	"R":  "Stops when required",
+	"RM": "Reversing movement, or driver changes ends",
+	"RR": "Stops for locomotive to run around train",
+	"S":  "Stops only for rail personel",
+	"T":  "Passenger (dis)embark",
+	"-T": "Attach/detail",
+	"TB": "Train begins",
+	"TF": "Train finishes",
+	"TS": "Detail Consist for TOPS Direct",
+	"TW": "Stops or at pass for tablet, staff or token",
+	"U":  "Stops to attach vehicles",
+	"W":  "Stops for watering of the coaches",
+	"X":  "Passes another train at crossing point on single line",
+}
+
 // PportTimetable was generated 2018-11-10 01:15:22
 type PportTimetable struct {
-	TimetableID string        `xml:"timetableID,attr"`
-	Journey     []Journey     `xml:"Journey"`
-	Association []Association `xml:"Association"`
+	TimetableID  string        `xml:"timetableID,attr"`
+	Journeys     []Journey     `xml:"Journey"`
+	Associations []Association `xml:"Association"`
 
 	XMLName xml.Name `xml:"PportTimetable"`
 	Xsd     string   `xml:"xsd,attr"`
@@ -16,16 +53,16 @@ type PportTimetable struct {
 
 // manually resolved xsd and xml structs
 type PassingPoint struct {
-	Tiploc     string `xml:"tpl,attr"`
-	PassedAt   string `xml:"wtp,attr"`
-	Platform   string `xml:"plat,attr"`
-	Action     string `xml:"act,attr"`
-	Cancelled  string `xml:"can,attr"`
-	RouteDelay string `xml:"rdelay,attr"`
+	LocationRef string `xml:"tpl,attr"`
+	PassedAt    string `xml:"wtp,attr"`
+	Platform    string `xml:"plat,attr"`
+	Activity    string `xml:"act,attr"`
+	Cancelled   bool   `xml:"can,attr"`
+	RouteDelay  string `xml:"rdelay,attr"`
 }
 
 type CallingPoint struct {
-	Tiploc              string `xml:"tpl,attr"`
+	Locaion             string `xml:"tpl,attr"`
 	Activity            string `xml:"act,attr"`
 	PlannedActivity     string `xml:"planAct,attr"`
 	Platform            string `xml:"plat,attr"`
@@ -39,36 +76,36 @@ type CallingPoint struct {
 }
 
 type Journey struct {
-	Rid                      string         `xml:"rid,attr"`
-	Uid                      string         `xml:"uid,attr"`
-	TrainId                  string         `xml:"trainId,attr"`
-	Ssd                      string         `xml:"ssd,attr"`
-	Toc                      string         `xml:"toc,attr"`
-	TrainCat                 string         `xml:"trainCat,attr"`
-	IsPassengerSvc           string         `xml:"isPassengerSvc,attr"`
-	Status                   string         `xml:"status,attr"`
-	Qtrain                   string         `xml:"qtrain,attr"`
-	Deleted                  string         `xml:"deleted,attr"`
-	Can                      string         `xml:"can,attr"`
-	IsCharter                string         `xml:"isCharter,attr"`
-	OriginPoint              []CallingPoint `xml:"OR"`
-	PassingPoints            []PassingPoint `xml:"PP"`
-	CallingPoints            []CallingPoint `xml:"IP"`
-	DestinationPoint         []CallingPoint `xml:"DT"`
-	InternalOriginPoint      CallingPoint   `xml:"OPOR"`
-	InternalCallingPoint     []CallingPoint `xml:"OPIP"`
-	InternalDestinationPoint CallingPoint   `xml:"OPDT"`
-	CancelReason             struct {
+	Id                   string         `xml:"rid,attr"`
+	TrainId              string         `xml:"uid,attr"`
+	TrainId              string         `xml:"trainId,attr"`
+	StartDate            string         `xml:"ssd,attr"`
+	OperatorRef          string         `xml:"toc,attr"`
+	TrainCategory        string         `xml:"trainCat,attr"`
+	IsPassengerSvc       string         `xml:"isPassengerSvc,attr"`
+	ServiceType          string         `xml:"status,attr"`  // sometimes 1. usually p
+	QueueTrain           string         `xml:"qtrain,attr"`  // qtrain is 'runs as required' i.e. doesn't run unless there's a queue
+	Deleted              string         `xml:"deleted,attr"` // does actually exist
+	Cancelled            string         `xml:"can,attr"`
+	IsCharter            string         `xml:"isCharter,attr"`
+	Origin               []CallingPoint `xml:"OR"`
+	PassingPoints        []PassingPoint `xml:"PP"`
+	CallingPoints        []CallingPoint `xml:"IP"`
+	Destination          []CallingPoint `xml:"DT"`
+	InternalOrigin       CallingPoint   `xml:"OPOR"`
+	InternalCallingPoint []CallingPoint `xml:"OPIP"`
+	InternalDestination  CallingPoint   `xml:"OPDT"`
+	CancelReason         struct {
 		Code   int    `xml:",chardata"`
 		Tiploc string `xml:"tiploc,attr"`
 	} `xml:"cancelReason"`
 }
 
 type Association struct {
-	Text     string `xml:",chardata"`
-	Tiploc   string `xml:"tiploc,attr"`
-	Category string `xml:"category,attr"`
-	Main     struct {
+	Text        string `xml:",chardata"`
+	LocationRef string `xml:"tiploc,attr"`
+	Category    string `xml:"category,attr"`
+	Main        struct {
 		Text string `xml:",chardata"`
 		Rid  string `xml:"rid,attr"`
 		Wta  string `xml:"wta,attr"`
@@ -88,18 +125,16 @@ type Association struct {
 
 // PportTimetableRef was generated 2018-11-10 01:15:22
 type Location struct {
-	Text    string `xml:",chardata"`
-	Tpl     string `xml:"tpl,attr"`
-	Locname string `xml:"locname,attr"`
-	Crs     string `xml:"crs,attr"`
-	Toc     string `xml:"toc,attr"`
+	Ref              string `xml:"tpl,attr"`
+	Name             string `xml:"locname,attr"`
+	AlphaCode        string `xml:"crs,attr"` // three character 'NOT' 'SHF' style code
+	OperatingCompany string `xml:"toc,attr"`
 }
 
-type TermsLink struct {
-	Text    string `xml:",chardata"`
-	Toc     string `xml:"toc,attr"`
-	Tocname string `xml:"tocname,attr"`
-	URL     string `xml:"url,attr"`
+type Operator struct {
+	Ref  string `xml:"toc,attr"`
+	Name string `xml:"tocname,attr"`
+	URL  string `xml:"url,attr"`
 }
 
 type Reason struct {
@@ -108,14 +143,14 @@ type Reason struct {
 }
 
 type PportTimetableRef struct {
-	TimetableId string      `xml:"timetableId,attr"`
-	XMLName     xml.Name    `xml:"PportTimetableRef"`
-	Text        string      `xml:",chardata"`
-	Xsd         string      `xml:"xsd,attr"`
-	Xsi         string      `xml:"xsi,attr"`
-	Xmlns       string      `xml:"xmlns,attr"`
-	Locations   []Location  `xml:"LocationRef"`
-	TermsLinks  []TermsLink `xml:"TocRef"`
+	TimetableId string     `xml:"timetableId,attr"`
+	XMLName     xml.Name   `xml:"PportTimetableRef"`
+	Text        string     `xml:",chardata"`
+	Xsd         string     `xml:"xsd,attr"`
+	Xsi         string     `xml:"xsi,attr"`
+	Xmlns       string     `xml:"xmlns,attr"`
+	Locations   []Location `xml:"LocationRef"`
+	Operator    []Operator `xml:"TocRef"`
 	Reasons     struct {
 		ReasonReasons []Reason `xml:"Reason"`
 	} `xml:"LateRunningReasons"`

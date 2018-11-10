@@ -169,7 +169,7 @@ func (df *DarwinFtp) parseXml() *NightlyXmlData {
 		}
 		return nil
 	})
-	if len(x.timetable.Journey) == 0 || len(x.timetable.Association) == 0 || len(x.reference.LocationRef) == 0 {
+	if len(x.timetable.Journeys) == 0 || len(x.timetable.Associations) == 0 || len(x.reference.Locations) == 0 {
 		panic("loaded timetable or reference appears invalid")
 	}
 	return &x
