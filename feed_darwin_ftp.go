@@ -137,8 +137,8 @@ func (df *DarwinFtp) fileOkay(info os.FileInfo, ext string) *XmlName {
 }
 
 type NightlyXmlData struct {
-	timetable darwin.PportTimetable
-	reference darwin.PportTimetableRef
+	Timetable darwin.PportTimetable
+	Reference darwin.PportTimetableRef
 }
 
 func (df *DarwinFtp) parseXml() *NightlyXmlData {
@@ -161,15 +161,15 @@ func (df *DarwinFtp) parseXml() *NightlyXmlData {
 			}
 			if xn.name == "ref_v3" {
 				fmt.Println("Unmarshalling reference")
-				xml.Unmarshal(b, &x.reference)
+				xml.Unmarshal(b, &x.Reference)
 			} else if xn.name == "v8" {
 				fmt.Println("Unmarshalling timetable")
-				xml.Unmarshal(b, &x.timetable)
+				xml.Unmarshal(b, &x.Timetable)
 			}
 		}
 		return nil
 	})
-	if len(x.timetable.Journeys) == 0 || len(x.timetable.Associations) == 0 || len(x.reference.Locations) == 0 {
+	if len(x.Timetable.Journeys) == 0 || len(x.Timetable.Associations) == 0 || len(x.Reference.Locations) == 0 {
 		panic("loaded timetable or reference appears invalid")
 	}
 	return &x

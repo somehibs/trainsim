@@ -17,7 +17,7 @@ var Activities = map[string]string{
 	"K":  "Passenger count point",
 	"KC": "Ticket collection and examination point",
 	"KE": "Ticket examination point",
-	"KF", "Ticket examination first class",
+	"KF": "Ticket examination first class",
 	"KS": "Selective ticket examination",
 	"L":  "Locomotive change",
 	"N":  "Stop not advertised", // unexpected stop
@@ -51,18 +51,27 @@ type PportTimetable struct {
 	Xmlns   string   `xml:"xmlns,attr"`
 }
 
-// manually resolved xsd and xml structs
-type PassingPoint struct {
-	LocationRef string `xml:"tpl,attr"`
-	PassedAt    string `xml:"wtp,attr"`
-	Platform    string `xml:"plat,attr"`
-	Activity    string `xml:"act,attr"`
-	Cancelled   bool   `xml:"can,attr"`
-	RouteDelay  string `xml:"rdelay,attr"`
-}
+const (
+	// Undef
+	CallingPoint_Undefined CallingPointType = 0
+
+	// Of public interest
+	CallingPoint_Origin       CallingPointType = 1
+	CallingPoint_Passing      CallingPointType = 2
+	CallingPoint_Destination  CallingPointType = 3
+	CallingPoint_Intermediate CallingPointType = 4
+
+	// Of internal interest
+	CallingPoint_OperationalMin          CallingPointType = 10
+	CallingPoint_OperationalOrigin       CallingPointType = 11
+	CallingPoint_OperationalIntermediate CallingPointType = 12
+	CallingPoint_OperationalDestination  CallingPointType = 13
+)
+
+type CallingPointType int
 
 type CallingPoint struct {
-	Locaion             string `xml:"tpl,attr"`
+	Ref                 string `xml:"tpl,attr"`
 	Activity            string `xml:"act,attr"`
 	PlannedActivity     string `xml:"planAct,attr"`
 	Platform            string `xml:"plat,attr"`
@@ -70,35 +79,38 @@ type CallingPoint struct {
 	PublicDeparture     string `xml:"ptd,attr"`
 	WorkingArrival      string `xml:"wta,attr"`
 	WorkingDeparture    string `xml:"wtd,attr"`
+	WorkingPassed       string `xml:"wtp,attr"` // for passing points only
 	Cancelled           string `xml:"can,attr"`
 	FalseDestinationTip string `xml:"fd,attr"`
 	RouteDelay          string `xml:"rdelay,attr"`
 }
 
 type Journey struct {
-	Id                   string         `xml:"rid,attr"`
-	TrainId              string         `xml:"uid,attr"`
-	TrainId              string         `xml:"trainId,attr"`
-	StartDate            string         `xml:"ssd,attr"`
-	OperatorRef          string         `xml:"toc,attr"`
-	TrainCategory        string         `xml:"trainCat,attr"`
-	IsPassengerSvc       string         `xml:"isPassengerSvc,attr"`
-	ServiceType          string         `xml:"status,attr"`  // sometimes 1. usually p
-	QueueTrain           string         `xml:"qtrain,attr"`  // qtrain is 'runs as required' i.e. doesn't run unless there's a queue
-	Deleted              string         `xml:"deleted,attr"` // does actually exist
-	Cancelled            string         `xml:"can,attr"`
-	IsCharter            string         `xml:"isCharter,attr"`
-	Origin               []CallingPoint `xml:"OR"`
-	PassingPoints        []PassingPoint `xml:"PP"`
-	CallingPoints        []CallingPoint `xml:"IP"`
-	Destination          []CallingPoint `xml:"DT"`
-	InternalOrigin       CallingPoint   `xml:"OPOR"`
-	InternalCallingPoint []CallingPoint `xml:"OPIP"`
-	InternalDestination  CallingPoint   `xml:"OPDT"`
-	CancelReason         struct {
-		Code   int    `xml:",chardata"`
-		Tiploc string `xml:"tiploc,attr"`
-	} `xml:"cancelReason"`
+	Id                   int64                 `xml:"rid,attr"`            // always present
+	Uid                  string                `xml:"uid,attr"`            // always present
+	TrainId              string                `xml:"trainId,attr"`        // always present
+	StartDate            string                `xml:"ssd,attr"`            // always present
+	OperatorRef          string                `xml:"toc,attr"`            // always present
+	TrainCategory        string                `xml:"trainCat,attr"`       // sometimes present, default PP or something
+	IsPassengerSvc       string                `xml:"isPassengerSvc,attr"` // ispassengerservice is true by default
+	ServiceType          string                `xml:"status,attr"`         // sometimes 1. usually p
+	QueueTrain           bool                  `xml:"qtrain,attr"`         // qtrain is 'runs as required' i.e. doesn't run unless there's a queue
+	Deleted              bool                  `xml:"deleted,attr"`        // does actually exist
+	Cancelled            bool                  `xml:"can,attr"`            // cancelled journey
+	IsCharter            bool                  `xml:"isCharter,attr"`      // not seen it
+	Origin               CallingPoint          `xml:"OR"`
+	PassingPoints        []CallingPoint        `xml:"PP"` // passingpoint is a calling point with less data and a working time passed field
+	CallingPoints        []CallingPoint        `xml:"IP"`
+	Destination          CallingPoint          `xml:"DT"`
+	InternalOrigin       CallingPoint          `xml:"OPOR"`
+	InternalCallingPoint []CallingPoint        `xml:"OPIP"`
+	InternalDestination  CallingPoint          `xml:"OPDT"`
+	CancelReason         []JourneyCancelReason `xml:"cancelReason"`
+}
+
+type JourneyCancelReason struct {
+	Code        uint32 `xml:",chardata"`
+	LocationRef string `xml:"tiploc,attr"`
 }
 
 type Association struct {
@@ -125,10 +137,10 @@ type Association struct {
 
 // PportTimetableRef was generated 2018-11-10 01:15:22
 type Location struct {
-	Ref              string `xml:"tpl,attr"`
-	Name             string `xml:"locname,attr"`
-	AlphaCode        string `xml:"crs,attr"` // three character 'NOT' 'SHF' style code
-	OperatingCompany string `xml:"toc,attr"`
+	Ref         string `xml:"tpl,attr"`
+	Name        string `xml:"locname,attr"`
+	AlphaCode   string `xml:"crs,attr"` // three character 'NOT' 'SHF' style code
+	OperatorRef string `xml:"toc,attr"`
 }
 
 type Operator struct {
@@ -138,7 +150,7 @@ type Operator struct {
 }
 
 type Reason struct {
-	Code int    `xml:"code,attr"`
+	Code int64  `xml:"code,attr"`
 	Text string `xml:"reasontext,attr"`
 }
 
@@ -150,9 +162,9 @@ type PportTimetableRef struct {
 	Xsi         string     `xml:"xsi,attr"`
 	Xmlns       string     `xml:"xmlns,attr"`
 	Locations   []Location `xml:"LocationRef"`
-	Operator    []Operator `xml:"TocRef"`
-	Reasons     struct {
-		ReasonReasons []Reason `xml:"Reason"`
+	Operators   []Operator `xml:"TocRef"`
+	LateReasons struct {
+		Reasons []Reason `xml:"Reason"`
 	} `xml:"LateRunningReasons"`
 	CancellationReasons struct {
 		Reasons []Reason `xml:"Reason"`
