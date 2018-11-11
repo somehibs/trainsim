@@ -1,6 +1,7 @@
 package trainsim
 
 import (
+	"fmt"
 	"time"
 
 	"git.circuitco.de/self/trainsim/xml"
@@ -43,9 +44,11 @@ func (r Reason) FromXml(ns int32, o darwin.Reason) Reason {
 type Journey struct {
 	Id               int64
 	OperatorId       int64
-	Origin           Location // prefers OR unless OPOR is only field
-	Destination      Location // prefers DT unless OPDT is only field
-	Cancelled        uint32   // 0 if not cancelled, otherwise code
+	Origin           string // prefers OR unless OPOR is only field
+	Destination      string // prefers DT unless OPDT is only field
+	StartTime        time.Time
+	EndTime          time.Time
+	Cancelled        uint32 // 0 if not cancelled, otherwise code
 	Uid              string
 	TrainId          string
 	StartDate        time.Time
@@ -65,17 +68,24 @@ func consumeJourney(db *gorm.DB, journey darwin.Journey) {
 		passengers = false
 	}
 	origin := ""
+	startTime := time.Unix(0, 0)
 	if journey.Origin.Ref != "" {
 		origin = journey.Origin.Ref
+		startTime = CallingPoint{}.FromXml(journey.Origin, Journey{}, nil).GetOldest()
 	} else {
 		origin = journey.InternalOrigin.Ref
+		startTime = CallingPoint{}.FromXml(journey.InternalOrigin, Journey{}, nil).GetOldest()
 	}
 	destination := ""
+	endTime := time.Unix(0, 0)
 	if journey.Destination.Ref != "" {
 		destination = journey.Destination.Ref
+		endTime = CallingPoint{}.FromXml(journey.Destination, Journey{}, nil).GetOldest()
 	} else {
 		destination = journey.InternalDestination.Ref
+		endTime = CallingPoint{}.FromXml(journey.InternalDestination, Journey{}, nil).GetOldest()
 	}
+
 	cancelReason := uint32(0)
 	if journey.Cancelled {
 		for _, c := range journey.CancelReason {
@@ -88,8 +98,10 @@ func consumeJourney(db *gorm.DB, journey darwin.Journey) {
 	j := Journey{
 		Id:               journey.Id,
 		OperatorId:       operatorIds[journey.OperatorRef],
-		Origin:           Location{Ref: origin},
-		Destination:      Location{Ref: destination},
+		Origin:           origin,
+		Destination:      destination,
+		StartTime:        startTime,
+		EndTime:          endTime,
 		Cancelled:        cancelReason,
 		Uid:              journey.Uid,
 		TrainId:          journey.TrainId,
@@ -109,17 +121,44 @@ func consumeJourney(db *gorm.DB, journey darwin.Journey) {
 type CallingPoint struct {
 	Id               int64 `gorm:"AUTO_INCREMENT"`
 	Type             uint32
-	Location         Location // reference to the reference xml with location data
-	FalseLocation    Location // some reason there's a second location on xml entities
-	Cancelled        int32    // cancellation code or 0
-	Activity         string   // if the train is doing some other things at this calling point
-	PlannedActivity  string   // if the train... might be doing some other things? idk
-	Platform         string   // planned platform
+	Journey          int64
+	Location         string `gorm:"index"` // reference to the reference xml with location data
+	FalseLocation    string // some reason there's a second location on xml entities
+	Cancelled        int32  // cancellation code or 0
+	Activity         string // if the train is doing some other things at this calling point
+	PlannedActivity  string // if the train... might be doing some other things? idk
+	Platform         string // planned platform
 	PublicArrival    time.Time
 	PublicDeparture  time.Time
 	WorkingArrival   time.Time
 	WorkingPassed    time.Time
 	WorkingDeparture time.Time
+}
+
+func (cp CallingPoint) ValidTime(t time.Time) bool {
+	if t.Unix() == 0 {
+		return false
+	}
+	return true
+}
+
+func (cp CallingPoint) GetOldest() time.Time {
+	if cp.ValidTime(cp.PublicDeparture) {
+		return cp.PublicDeparture
+	} else if cp.ValidTime(cp.PublicArrival) {
+		return cp.PublicArrival
+	} else if cp.ValidTime(cp.WorkingDeparture) {
+		return cp.WorkingDeparture
+	} else if cp.ValidTime(cp.WorkingArrival) {
+		return cp.WorkingArrival
+	}
+	return time.Now()
+}
+
+func (cp CallingPoint) After(other CallingPoint) bool {
+	oldest := cp.GetOldest()
+	otherOldest := other.GetOldest()
+	return oldest.After(otherOldest)
 }
 
 var timeFormat = "15:04:05"
@@ -138,8 +177,9 @@ func MustParse(format, timeStr string) time.Time {
 	return time
 }
 
-func (cp CallingPoint) FromXml(p darwin.CallingPoint, cancellations map[string]darwin.JourneyCancelReason) CallingPoint {
-	cp.Location = Location{Ref: p.Ref}
+func (cp CallingPoint) FromXml(p darwin.CallingPoint, journey Journey, cancellations map[string]darwin.JourneyCancelReason) CallingPoint {
+	cp.Location = p.Ref
+	cp.Journey = journey.Id
 	cp.Activity = p.Activity
 	cp.PlannedActivity = p.PlannedActivity
 	cp.Platform = p.Platform
@@ -152,7 +192,7 @@ func (cp CallingPoint) FromXml(p darwin.CallingPoint, cancellations map[string]d
 }
 
 func insertPoint(tx *gorm.DB, xml darwin.CallingPoint, cpType darwin.CallingPointType, dbJourney Journey) {
-	point := CallingPoint{}.FromXml(xml, nil)
+	point := CallingPoint{}.FromXml(xml, dbJourney, nil)
 	point.Type = uint32(cpType)
 	tx.Create(&point)
 }
@@ -174,13 +214,21 @@ func insertPoints(db *gorm.DB, journey darwin.Journey, dbJourney Journey) {
 }
 
 func ConsumeXmlJourney(db *gorm.DB, data *NightlyXmlData) {
-	for _, table := range []string{"journeys"} {
+	for _, table := range []string{"journeys", "calling_points"} {
 		db.Exec("DROP TABLE " + table)
 	}
+	fmt.Println("journey count", len(data.Timetable.Journeys))
 	ensureTypes(db)
 	CacheOperIds(db)
 	// normalise each journey
+	parsed := 0
+	jl := len(data.Timetable.Journeys)
 	for _, journey := range data.Timetable.Journeys {
+		parsed += 1
+		if parsed%1000 == 0 {
+			pct := float64(parsed) / float64(jl)
+			fmt.Println(parsed, "/", jl, "(", 100*pct, "%)")
+		}
 		consumeJourney(db, journey)
 	}
 }

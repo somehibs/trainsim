@@ -3,10 +3,20 @@ package trainsim
 import (
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
+	"time"
 )
+
+func PerfStart() time.Time {
+	return time.Now()
+}
+
+func PerfEnd(component string, start time.Time) {
+	fmt.Printf("perf: %s: %f\n", component, time.Now().Sub(start).Seconds()*1000) // search took n ms
+}
 
 func GunzipFile(file, extracted string) bool {
 	f, err := os.Open(file)

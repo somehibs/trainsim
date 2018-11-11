@@ -103,7 +103,9 @@ func (df *DarwinFtp) parseFilename(name string) XmlName {
 			panic(fmt.Sprintf("Unexpected unmatched datekey %s", ft))
 		}
 		nt := time.Now()
-		if ft.Day() == nt.Day() && ft.Month() == nt.Month() && nt.Year() == ft.Year() {
+		// Refreshes once daily so if the filetime is about 24 hours ago (they add 5min to the file timestamp) lol)
+		// add 30m to avoid overloading server
+		if nt.Sub(ft) < (time.Hour*24)+(time.Minute+30) {
 			xn.today = true
 		}
 		xn.time = ft

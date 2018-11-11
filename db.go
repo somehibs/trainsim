@@ -34,6 +34,6 @@ func NewDb() *gorm.DB {
 	if err != nil {
 		panic("cannot open connection: " + err.Error())
 	}
-	//db.LogMode(false)
+	db.LogMode(false)
 	return db
 }
